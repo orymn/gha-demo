@@ -1,16 +1,16 @@
-name: Deploy website
+name: Website Deployment
 on:
-  workflow_dispatch:
   push:
     branches:
-      - master
+      - main
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - name: Get code
         uses: actions/checkout@v3
       - name: Cache dependencies
+        id: cache
         uses: actions/cache@v3
         with:
           path: ~/.npm
@@ -19,17 +19,34 @@ jobs:
         run: npm ci
       - name: Lint code
         run: npm run lint
-      - name: Test code
-        run: npm run test
-  build:
-    needs: test
+  test:
     runs-on: ubuntu-latest
-    outputs:
-      script-file: ${{ steps.publish.outputs.script-file }}
     steps:
       - name: Get code
         uses: actions/checkout@v3
       - name: Cache dependencies
+        id: cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: deps-node-modules-${{ hashFiles('**/package-lock.json') }}
+      - name: Install dependencies
+        run: npm ci
+      - name: Test code
+        run: npm run test
+      - name: Upload test report
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-report
+          path: test.json
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get code
+        uses: actions/checkout@v3
+      - name: Cache dependencies
+        id: cache
         uses: actions/cache@v3
         with:
           path: ~/.npm
@@ -37,28 +54,22 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Build website
+        id: build-website
         run: npm run build
-      - name: publish js filename
-        id: publish
-        run: find dist/assets/*.js -type f -execdir echo 'script-file={}' >> $GITHUB_OUTPUT ';'
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
           name: dist-files
-          path: |
-            dist
-            package.json
+          path: dist
   deploy:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: get build artifacts
+      - name: Get build artifacts
         uses: actions/download-artifact@v3
         with:
           name: dist-files
       - name: Output contents
         run: ls
-      - name: output filename
-        run: echo "${{ needs.build.outputs.script-file }}"
       - name: Deploy
         run: echo "Deploying..."
